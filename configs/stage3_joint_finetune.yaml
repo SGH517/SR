@@ -3,7 +3,7 @@
 # Dataset Configuration (使用 LR 图像和原始 HR 标注)
 dataset:
   name: COCO # 或 PASCAL_VOC 等
-  # 假设已使用 prepare_detection_data.py 生成 LR 图像和调整后的标注
+  # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
   image_dir: "./output_data" # 包含 LR/ 和 annotations.json 的父目录
   annotation_file: "./output_data/annotations.json" # 调整后的标注文件
   scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
@@ -27,6 +27,8 @@ model:
     base_channels: 32
     num_blocks: 4
     output_channels: 1 # 输出单通道 logits
+    output_patch_size: 16 # <--- 新增: Masker 输出相对于 LR 输入的下采样因子 (粗粒度)
+    threshold: 0.5 # <--- 新增: 推理时硬掩码的阈值
 
   # 预训练权重路径
   weights:
@@ -38,12 +40,15 @@ model:
 # Training Configuration
 train:
   epochs: 30 # <--- 修改: 微调轮数
-  batch_size: 8 # <--- 修改: 批次大小 (可能因显存受限)
+  batch_size: 8 # <--- 修改: 批次大小
 
-  # 差分学习率
+  # 差分学习率配置
+  # utils/optimizer_utils.py 会根据以下规则自动分组参数：
+  # High LR: Masker 所有参数, Detector Head 参数 (尝试识别), SR_Fast/SR_Quality 的上采样层参数 (ConvTranspose2d, PixelShuffle 前的 Conv2d)
+  # Low LR: Detector Backbone 参数, SR_Fast/SR_Quality 的主体参数
   learning_rates:
-    high_lr: 0.0001 # 用于 Masker, Detector Head, SR 最后几层
-    low_lr: 0.000001 # 用于 Detector Backbone, SR 前面层
+    high_lr: 0.0001 # 用于 Masker, Detector Head, SR 上采样层等
+    low_lr: 0.000001 # 用于 Detector Backbone, SR 主体层等
 
   # 优化器 (使用 utils/optimizer_utils.py 配置)
   optimizer:
@@ -72,20 +77,23 @@ train:
   gumbel:
     initial_tau: 2.0 # 初始温度
     final_tau: 0.5   # 最终温度
-    anneal_epochs: 15 # 温度退火的 epoch 数
+    anneal_epochs: 15 # 温度退火的 epoch 数 (如果 anneal_steps 未设置)
+    anneal_steps: 15000 # <--- 修改: 温度退火的步数 (示例值，需要根据实际数据集大小和 epoch 调整)。优先使用此项。
+    anneal_schedule: "cosine" # <--- 新增: 退火策略 (linear, cosine)
 
   device: "cpu" # 默认使用CPU训练，可通过命令行参数覆盖为"cuda"
   num_workers: 4
   seed: 42
+  log_interval_steps: 10 # 每隔多少步记录一次训练日志到 TensorBoard
 
 # Logging and Saving
 log_dir: "logs/stage3_joint"
 checkpoint_dir: "checkpoints/stage3_joint"
-save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint
+# save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint (已改为 step-based 在 stage3_finetune_joint.py 中控制)
 
 # Evaluation (在训练过程中进行)
 evaluation:
-  interval: 1 # 每隔多少 epoch 评估一次
+  # interval: 1 # 每隔多少 epoch 评估一次 (已改为 step-based 在 stage3_finetune_joint.py 中控制)
   metric: "map" # 主要评估指标
   # 验证集使用与训练集相同的设置 (LR 图像)
   val_image_dir: "./output_data" # 验证集 LR 图像父目录

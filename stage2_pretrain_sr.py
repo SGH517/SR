@@ -222,6 +222,32 @@ def main():
     logger.info(f"Loaded configuration from: {args.config}")
     logger.info(f"Step-based Eval Interval: {args.eval_interval}, Save Interval: {args.save_interval}")
 
+    # --- 配置校验 ---
+    logger.info("--- Validating Configuration ---")
+    dataset_config = config.get('dataset', {})
+    train_base_dir = dataset_config.get('base_dir')
+    scale_factor = dataset_config.get('scale_factor')
+
+    if not train_base_dir or not os.path.exists(train_base_dir):
+        logger.error(f"Training dataset base directory not found: {train_base_dir}. Exiting.")
+        exit(1)
+    if not isinstance(scale_factor, int) or scale_factor <= 0:
+         logger.error(f"Invalid scale_factor in dataset config: {scale_factor}. Must be a positive integer. Exiting.")
+         exit(1)
+
+    sr_fast_config = config.get('models', {}).get('sr_fast', {})
+    sr_quality_config = config.get('models', {}).get('sr_quality', {})
+
+    if sr_fast_config.get('scale_factor') != scale_factor:
+        logger.error(f"Scale factor mismatch: dataset ({scale_factor}) vs sr_fast ({sr_fast_config.get('scale_factor')}). Exiting.")
+        exit(1)
+    if sr_quality_config.get('scale_factor') != scale_factor:
+        logger.error(f"Scale factor mismatch: dataset ({scale_factor}) vs sr_quality ({sr_quality_config.get('scale_factor')}). Exiting.")
+        exit(1)
+
+    logger.info("--- Configuration Validated ---")
+    # --- End Configuration Validation ---
+
     logger.info("Initializing SR_Fast model...")
     sr_fast_config = config['models']['sr_fast']
     sr_fast_model = SRFast(**sr_fast_config)

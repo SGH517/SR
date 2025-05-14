@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from utils.logger import setup_logger
 from torch.utils.tensorboard import SummaryWriter
 import shutil  # Import shutil
+import torch  # Import torch for cuda check
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Stage 1: Pretrain YOLO on High-Resolution Data")
@@ -23,6 +24,29 @@ def train_yolo(config, args):
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(ckpt_dir, exist_ok=True)
     logger = setup_logger(log_dir, "stage1_train.log")
+
+    # --- 配置校验 ---
+    logger.info("--- Validating Configuration ---")
+    dataset_config = config.get('dataset', {})
+    train_image_dir = dataset_config.get('train_image_dir')
+    val_image_dir = dataset_config.get('val_image_dir')
+    train_annotation_file = dataset_config.get('train_annotation_file')
+    val_annotation_file = dataset_config.get('val_annotation_file')
+
+    if not train_image_dir or not os.path.exists(train_image_dir):
+        logger.error(f"Training image directory not found: {train_image_dir}")
+        return # Exit if critical path is missing
+    if not train_annotation_file or not os.path.exists(train_annotation_file):
+        logger.error(f"Training annotation file not found: {train_annotation_file}")
+        return # Exit if critical path is missing
+    if args.enable_eval: # Only check validation paths if evaluation is enabled
+        if not val_image_dir or not os.path.exists(val_image_dir):
+            logger.warning(f"Validation image directory not found: {val_image_dir}. Evaluation might fail.")
+        if not val_annotation_file or not os.path.exists(val_annotation_file):
+            logger.warning(f"Validation annotation file not found: {val_annotation_file}. Evaluation might fail.")
+
+    logger.info("--- Configuration Validated ---")
+    # --- End Configuration Validation ---
 
     writer = SummaryWriter(log_dir=os.path.join(log_dir, "tensorboard"))
 
