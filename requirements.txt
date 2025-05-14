@@ -1,0 +1,9 @@
+torch
+pillow
+pyyaml  # 添加 pyyaml
+ultralytics
+torchvision
+thop
+torchmetrics # 添加 torchmetrics (用于评估)
+pycocotools # 添加 pycocotools (mAP 依赖)
+tqdm # 添加 tqdm (用于评估进度条)

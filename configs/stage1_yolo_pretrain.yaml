@@ -1,0 +1,46 @@
+# --- Stage 1: YOLO Pretraining on High-Resolution Data ---
+
+# Dataset Configuration
+dataset:
+  name: COCO # 或 PASCAL_VOC 等
+  train_image_dir: "./output_data/LR" # 使用我们生成的LR图像
+  train_annotation_file: "./output_data/annotations.json" # 使用我们生成的标注
+  val_image_dir: "./output_data/LR" # 暂时使用训练集作为验证集
+  val_annotation_file: "./output_data/annotations.json" # 暂时使用训练标注作为验证标注
+  # input_size: [640, 640] # YOLO 输入尺寸 (可能由 YOLO 模型内部处理)
+
+# Model Configuration
+model:
+  type: YOLO # 使用 ultralytics YOLO
+  version: "yolov8n.pt" # <--- 修改: 选择 YOLO 版本 (n, s, m, l, x) 或指定 .pt 文件路径
+  # num_classes: 80 # COCO 类别数 (通常由 YOLO 模型自动处理)
+
+# Training Configuration
+train:
+  epochs: 50 # <--- 修改: 训练轮数
+  batch_size: 16 # <--- 修改: 批次大小
+  optimizer:
+    name: AdamW # 或 SGD
+    args:
+      lr: 0.001
+      weight_decay: 0.0005
+  scheduler:
+    name: CosineAnnealingLR # 或 StepLR 等
+    args:
+      T_max: 50 # 与 epochs 匹配
+      eta_min: 0.00001
+  # Data Augmentation (YOLO 内部通常有自己的增强)
+  # augmentation: ...
+  device: "cpu" # 默认使用CPU训练，可通过命令行参数覆盖为"cuda"
+  num_workers: 4
+  seed: 42
+
+# Logging and Saving
+log_dir: "logs/stage1_yolo"
+checkpoint_dir: "checkpoints/stage1_yolo"
+save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint
+
+# Evaluation (在训练过程中进行)
+evaluation:
+  interval: 1 # 每隔多少 epoch 评估一次
+  metric: "map" # 主要评估指标
