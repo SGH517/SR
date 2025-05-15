@@ -1,0 +1,4 @@
+2025-05-15 15:58:33,769 - INFO - --- Validating Configuration ---
+2025-05-15 15:58:33,769 - ERROR - Training image directory not found: ./temp_data/stage1/train/images
+2025-05-15 16:03:35,512 - INFO - --- Validating Configuration ---
+2025-05-15 16:03:35,512 - ERROR - Training image directory not found: ./temp_data/stage1/train/images

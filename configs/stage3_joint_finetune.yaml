@@ -1,0 +1,100 @@
+# --- Stage 3: Joint Finetuning (ConditionalSR + YOLO) ---
+
+# Dataset Configuration (使用 LR 图像和原始 HR 标注)
+dataset:
+  name: COCO # 或 PASCAL_VOC 等
+  # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
+  image_dir: "./temp_data/stage3/train" # <--- 修改: 临时训练集 LR 图像父目录
+  annotation_file: "./temp_data/stage3/train/annotations.json" # <--- 修改: 临时训练集调整后的标注文件
+  scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
+
+# Model Configuration
+model:
+  # ConditionalSR 子模块参数 (应与 stage2 匹配)
+  sr_fast:
+    in_channels: 3
+    d: 56
+    s: 12
+    m: 4
+    scale_factor: 4
+  sr_quality:
+    in_channels: 3
+    num_channels: 64
+    num_blocks: 16
+    scale_factor: 4
+  masker:
+    in_channels: 3
+    base_channels: 32
+    num_blocks: 4
+    output_channels: 1 # 输出单通道 logits
+    output_patch_size: 16 # <--- 新增: Masker 输出相对于 LR 输入的下采样因子 (粗粒度)
+    threshold: 0.5 # <--- 新增: 推理时硬掩码的阈值
+
+  # 预训练权重路径
+  weights:
+    sr_fast: "./temp_checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: 临时 SR_Fast 权重路径
+    sr_quality: "./temp_checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: 临时 SR_Quality 权重路径
+    masker: null # <--- 修改: 如果有预训练 Masker 权重，提供路径
+    detector: "./temp_checkpoints/stage1_yolo/yolo_pretrained_hr.pth" # <--- 修改: 临时 YOLO 权重路径
+
+# Training Configuration
+train:
+  epochs: 30 # <--- 修改: 微调轮数
+  batch_size: 8 # <--- 修改: 批次大小
+
+  # 差分学习率配置
+  # utils/optimizer_utils.py 会根据以下规则自动分组参数：
+  # High LR: Masker 所有参数, Detector Head 参数 (尝试识别), SR_Fast/SR_Quality 的上采样层参数 (ConvTranspose2d, PixelShuffle 前的 Conv2d)
+  # Low LR: Detector Backbone 参数, SR_Fast/SR_Quality 的主体参数
+  learning_rates:
+    high_lr: 0.0001 # 用于 Masker, Detector Head, SR 上采样层等
+    low_lr: 0.000001 # 用于 Detector Backbone, SR 主体层等
+
+  # 优化器 (使用 utils/optimizer_utils.py 配置)
+  optimizer:
+    name: AdamW
+    args:
+      weight_decay: 0.0005
+      # lr 在 learning_rates 中定义
+
+  # 学习率调度器 (可选，应用于所有参数组)
+  scheduler:
+    name: CosineAnnealingLR
+    args:
+      T_max: 30 # 与 epochs 匹配
+      eta_min: 0.0000001 # 最终学习率下限
+
+  # 损失函数权重
+  loss_weights:
+    detection: 1.0 # YOLO 检测损失权重
+    sparsity: 0.1 # 稀疏度损失权重 (鼓励少用 SR_Quality) <--- 调整
+    smoothness: 0.01 # 掩码平滑度损失权重 (可选) <--- 调整
+
+  # 稀疏度目标 (用于 L_sparsity = mse(mean(mask), target_sparsity_ratio))
+  target_sparsity_ratio: 0.2 # 目标 Quality 区域比例 (例如 20%) <--- 调整
+
+  # Gumbel-Softmax 温度
+  gumbel:
+    initial_tau: 2.0 # 初始温度
+    final_tau: 0.5   # 最终温度
+    anneal_epochs: 15 # 温度退火的 epoch 数 (如果 anneal_steps 未设置)
+    anneal_steps: 15000 # <--- 修改: 温度退火的步数 (示例值，需要根据实际数据集大小和 epoch 调整)。优先使用此项。
+    anneal_schedule: "cosine" # <--- 新增: 退火策略 (linear, cosine)
+
+  device: "cpu" # 默认使用CPU训练，可通过命令行参数覆盖为"cuda"
+  num_workers: 4
+  seed: 42
+  log_interval_steps: 10 # 每隔多少步记录一次训练日志到 TensorBoard
+
+# Logging and Saving
+log_dir: "./temp_logs/stage3_joint" # <--- 修改: 临时日志目录
+checkpoint_dir: "./temp_checkpoints/stage3_joint" # <--- 修改: 临时检查点目录
+# save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint (已改为 step-based 在 stage3_finetune_joint.py 中控制)
+
+# Evaluation (在训练过程中进行)
+evaluation:
+  # interval: 1 # 每隔多少 epoch 评估一次 (已改为 step-based 在 stage3_finetune_joint.py 中控制)
+  metric: "map" # 主要评估指标
+  # 验证集使用与训练集相同的设置 (LR 图像)
+  val_image_dir: "./temp_data/stage3/val" # <--- 修改: 临时验证集 LR 图像父目录
+  val_annotation_file: "./temp_data/stage3/val/annotations.json" # <--- 修改: 临时验证集调整后标注
