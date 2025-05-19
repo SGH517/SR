@@ -4,8 +4,8 @@
 dataset:
   name: COCO # 或 PASCAL_VOC 等
   # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
-  image_dir: "./output_data" # 包含 LR/ 和 annotations.json 的父目录
-  annotation_file: "./output_data/annotations.json" # 调整后的标注文件
+  image_dir: "./temp_data/stage3/train" # <--- 修改: 临时训练集 LR 图像父目录
+  annotation_file: "./temp_data/stage3/train/annotations.json" # <--- 修改: 临时训练集调整后的标注文件
   scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
 
 # Model Configuration
@@ -32,10 +32,10 @@ model:
 
   # 预训练权重路径
   weights:
-    sr_fast: "checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: 来自 stage2 的 SR_Fast 权重
-    sr_quality: "checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: 来自 stage2 的 SR_Quality 权重
+    sr_fast: "./temp_checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: 临时 SR_Fast 权重路径
+    sr_quality: "./temp_checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: 临时 SR_Quality 权重路径
     masker: null # <--- 修改: 如果有预训练 Masker 权重，提供路径
-    detector: "checkpoints/stage1_yolo/yolo_pretrained_hr.pth" # <--- 修改: 来自 stage1 的 YOLO 权重
+    detector: "./temp_checkpoints/stage1_yolo/yolo_pretrained_hr.pth" # <--- 修改: 临时 YOLO 权重路径
 
 # Training Configuration
 train:
@@ -87,8 +87,8 @@ train:
   log_interval_steps: 10 # 每隔多少步记录一次训练日志到 TensorBoard
 
 # Logging and Saving
-log_dir: "logs/stage3_joint"
-checkpoint_dir: "checkpoints/stage3_joint"
+log_dir: "./temp_logs/stage3_joint" # <--- 修改: 临时日志目录
+checkpoint_dir: "./temp_checkpoints/stage3_joint" # <--- 修改: 临时检查点目录
 # save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint (已改为 step-based 在 stage3_finetune_joint.py 中控制)
 
 # Evaluation (在训练过程中进行)
@@ -96,5 +96,5 @@ evaluation:
   # interval: 1 # 每隔多少 epoch 评估一次 (已改为 step-based 在 stage3_finetune_joint.py 中控制)
   metric: "map" # 主要评估指标
   # 验证集使用与训练集相同的设置 (LR 图像)
-  val_image_dir: "./output_data" # 验证集 LR 图像父目录
-  val_annotation_file: "./output_data/annotations.json" # 验证集调整后标注
+  val_image_dir: "./temp_data/stage3/val" # <--- 修改: 临时验证集 LR 图像父目录
+  val_annotation_file: "./temp_data/stage3/val/annotations.json" # <--- 修改: 临时验证集调整后标注

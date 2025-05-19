@@ -15,6 +15,8 @@ from models.sr_quality import SRQuality
 from data.sr_dataset import SRDataset
 from utils.logger import setup_logger
 from utils.metrics import calculate_psnr, calculate_ssim
+from data.sr_dataset import SRDataset
+from torchvision import transforms
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Stage 2: Pretrain SR Networks (SR_Fast and SR_Quality)")
@@ -24,16 +26,16 @@ def parse_args():
     parser.add_argument("--use_gpu", action="store_true", help="Use GPU for training if available")
     return parser.parse_args()
 
-def get_transforms(config):
-    patch_size = config['dataset'].get('patch_size', None)
-    transforms_list = []
-    if patch_size:
-        print(f"Warning: Patch cropping not fully implemented. Applying ToTensor directly.")
-        print("Consider implementing HR patch cropping and corresponding LR generation.")
-        transforms_list.append(ToTensor())
-    else:
-        transforms_list.append(ToTensor())
-    return Compose(transforms_list)
+# def get_transforms(config):
+#     patch_size = config['dataset'].get('patch_size', None)
+#     transforms_list = []
+#     if patch_size:
+#         print(f"Warning: Patch cropping not fully implemented. Applying ToTensor directly.")
+#         print("Consider implementing HR patch cropping and corresponding LR generation.")
+#         transforms_list.append(ToTensor())
+#     else:
+#         transforms_list.append(ToTensor())
+#     return Compose(transforms_list)
 
 def run_sr_evaluation(model, model_name, val_dataloaders, device, logger, writer, global_step):
     """在所有验证集上运行 SR 模型评估并记录结果。"""
@@ -74,36 +76,83 @@ def train_sr_model(model, model_name, model_config, train_config, dataset_config
     device = torch.device(train_config['device'])
     model.to(device)
 
-    transform = get_transforms(train_config['dataset'])
+    # 从YAML的 dataset 部分获取 patch_size 和 scale_factor
+    # dataset_config 参数就是从YAML加载的 config['dataset']
+    lr_patch_size = dataset_config.get('patch_size', None)
+    scale_factor = dataset_config.get('scale_factor', 4) # 确保配置文件中有 scale_factor
+    
+    # 定义应用于Tensor的额外转换 (例如归一化，如果需要的话)
+    # SRDataset 内部已经处理了 PIL Image -> Tensor 的转换
+    # 所以这里的 transform 是用于 Tensor 格式的数据
+    additional_tensor_transforms = None
+    # 例如，如果您需要归一化:
+    # additional_tensor_transforms = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+
     train_lr_dir = os.path.join(dataset_config['base_dir'], "LR")
     train_hr_dir = os.path.join(dataset_config['base_dir'], "HR")
     try:
-        train_dataset = SRDataset(lr_dir=train_lr_dir, hr_dir=train_hr_dir, transform=transform)
-        train_dataloader = DataLoader(train_dataset,
-                                      batch_size=train_config['batch_size'],
-                                      shuffle=True,
-                                      num_workers=train_config['num_workers'],
-                                      pin_memory=True)
+        train_dataset = SRDataset(
+            lr_dir=train_lr_dir,
+            hr_dir=train_hr_dir,
+            patch_size=lr_patch_size,         # 传递LR patch_size
+            scale_factor=scale_factor,        # 传递scale_factor
+            transform=additional_tensor_transforms, # 传递Tensor的额外转换
+            augment=True                      # 训练时启用内置增强
+        )
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=train_config['batch_size'],
+            shuffle=True,
+            num_workers=train_config['num_workers'],
+            pin_memory=True,
+            # 添加 collate_fn 以处理 SRDataset 在图像加载失败时可能返回 (None, None) 的情况
+            collate_fn=lambda batch: torch.utils.data.dataloader.default_collate([item for item in batch if item[0] is not None and item[1] is not None])
+        )
+        logger.info(f"训练数据集已从 {dataset_config['base_dir']} 加载，使用 patch_size: {lr_patch_size}")
     except FileNotFoundError as e:
-        logger.error(f"Training data not found for {model_name}: {e}")
+        logger.error(f"训练数据未找到 ({model_name}): {e}")
+        return
+    except Exception as e: # 更通用的异常捕获
+        logger.error(f"加载训练数据时发生错误 ({model_name}): {e}")
         return
 
     val_dataloaders = {}
     if 'evaluation' in train_config and 'val_dataset' in train_config['evaluation']:
-        val_base_dir = train_config['evaluation']['val_dataset']['base_dir']
-        val_sets = train_config['evaluation']['val_dataset']['sets']
-        for val_set in val_sets:
-            val_lr_dir = os.path.join(val_base_dir, val_set, "LR")
-            val_hr_dir = os.path.join(val_base_dir, val_set, "HR")
-            if os.path.exists(val_lr_dir) and os.path.exists(val_hr_dir):
-                try:
-                    val_dataset = SRDataset(lr_dir=val_lr_dir, hr_dir=val_hr_dir, transform=ToTensor())
-                    val_dataloaders[val_set] = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=1)
-                    logger.info(f"Loaded validation dataset: {val_set}")
-                except FileNotFoundError:
-                    logger.warning(f"Validation data not found for {val_set} at {val_base_dir}")
-            else:
-                logger.warning(f"Validation directories not found for {val_set} at {val_base_dir}")
+        val_eval_config = train_config['evaluation']['val_dataset'] # evaluation下的val_dataset部分
+        val_base_dir = val_eval_config.get('base_dir')
+        val_sets = val_eval_config.get('sets', []) # sets应该是一个列表
+
+        if val_base_dir and val_sets:
+            for val_set_name in val_sets:
+                val_lr_dir = os.path.join(val_base_dir, val_set_name, "LR")
+                val_hr_dir = os.path.join(val_base_dir, val_set_name, "HR")
+                if os.path.exists(val_lr_dir) and os.path.exists(val_hr_dir):
+                    try:
+                        val_dataset = SRDataset(
+                            lr_dir=val_lr_dir,
+                            hr_dir=val_hr_dir,
+                            patch_size=None,  # 验证时通常不使用随机裁剪的patch
+                            scale_factor=scale_factor,
+                            transform=additional_tensor_transforms, # 应用同样的额外Tensor转换
+                            augment=False # 验证时不进行数据增强
+                        )
+                        val_dataloaders[val_set_name] = DataLoader(
+                            val_dataset,
+                            batch_size=train_config.get('val_batch_size', 1), # 验证时batch_size通常为1
+                            shuffle=False,
+                            num_workers=train_config.get('num_workers', 1),
+                            pin_memory=True,
+                            collate_fn=lambda batch: torch.utils.data.dataloader.default_collate([item for item in batch if item[0] is not None and item[1] is not None])
+                        )
+                        logger.info(f"已加载验证数据集: {val_set_name} 从 {val_base_dir}")
+                    except FileNotFoundError:
+                        logger.warning(f"验证数据文件未找到: {val_set_name} 在 {val_base_dir}")
+                    except Exception as e:
+                        logger.error(f"加载验证数据 {val_set_name} 时发生错误: {e}")
+                else:
+                    logger.warning(f"验证数据目录未找到: {val_lr_dir} 或 {val_hr_dir}")
+        else:
+            logger.info("配置文件中未完整指定验证数据集 (evaluation.val_dataset.base_dir 或 sets)。跳过验证集加载。")
 
     optimizer_name = train_config['optimizer']['name'].lower()
     optimizer_args = train_config['optimizer']['args']
@@ -251,7 +300,9 @@ def main():
     logger.info("Initializing SR_Fast model...")
     sr_fast_config = config['models']['sr_fast']
     sr_fast_model = SRFast(**sr_fast_config)
-    train_sr_model(sr_fast_model, "SR_Fast", sr_fast_config, config['train'], config['dataset'], logger, args)
+    # train_sr_model(sr_fast_model, "SR_Fast", sr_fast_config, config['train'], config['dataset'], logger, args)
+    train_sr_model(sr_fast_model, "SR_Fast", config['models']['sr_fast'], config['train'], config['dataset'], logger, args)
+    train_sr_model(sr_quality_model, "SR_Quality", config['models']['sr_quality'], config['train'], config['dataset'], logger, args)
 
     logger.info("Initializing SR_Quality model...")
     sr_quality_config = config['models']['sr_quality']

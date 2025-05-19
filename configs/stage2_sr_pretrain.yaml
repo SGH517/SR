@@ -4,7 +4,7 @@
 dataset:
   name: DIV2K # 或 Flickr2K 等
   # 假设已使用 prepare_sr_data.py 生成 LR/ 和 HR/ 目录
-  base_dir: "./output_data" # 包含 LR/ 和 HR/ 的父目录
+  base_dir: "./temp_data/stage2/train" # <--- 修改: 临时训练集 LR/HR 父目录
   scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
   # patch_size: 64 # 训练时裁剪的 LR patch 大小 (可选)
 
@@ -17,14 +17,14 @@ models:
     s: 12
     m: 4
     scale_factor: 4 # <--- 必须与 dataset.scale_factor 匹配
-    output_path: "checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: SR_Fast 权重保存路径
+    output_path: "./temp_checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: 临时 SR_Fast 权重保存路径
   sr_quality:
     # SRQuality 参数 (参考 models/sr_quality.py)
     in_channels: 3
     num_channels: 64
     num_blocks: 16
     scale_factor: 4 # <--- 必须与 dataset.scale_factor 匹配
-    output_path: "checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: SR_Quality 权重保存路径
+    output_path: "./temp_checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: 临时 SR_Quality 权重保存路径
 
 # Training Configuration (通用设置，可为 fast/quality 分别调整)
 train:
@@ -46,7 +46,7 @@ train:
   seed: 42
 
 # Logging and Saving
-log_dir: "logs/stage2_sr"
+log_dir: "./temp_logs/stage2_sr" # <--- 修改: 临时日志目录
 # Checkpoints 在 models 配置中指定了路径
 save_interval: 10 # 每隔多少 epoch 保存一次 checkpoint
 
@@ -55,5 +55,5 @@ evaluation:
   interval: 5 # 每隔多少 epoch 评估一次
   metrics: ["psnr", "ssim"] # 评估指标
   val_dataset: # <--- 修改: 验证数据集路径 (例如 Set5, Set14)
-    base_dir: "./output_data"
-    sets: ["Set5", "Set14"]
+    base_dir: "./temp_data/stage2/val" # <--- 修改: 临时验证集 LR/HR 父目录
+    sets: ["Set5", "Set14"] # 验证集子目录名称

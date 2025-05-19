@@ -3,10 +3,11 @@
 # Dataset Configuration
 dataset:
   name: COCO # 或 PASCAL_VOC 等
-  train_image_dir: "./output_data/LR" # 使用我们生成的LR图像
-  train_annotation_file: "./output_data/annotations.json" # 使用我们生成的标注
-  val_image_dir: "./output_data/LR" # 暂时使用训练集作为验证集
-  val_annotation_file: "./output_data/annotations.json" # 暂时使用训练标注作为验证标注
+  # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
+  train_image_dir: "./temp_data/stage1/train/images" # <--- 修改: 临时训练集图像目录
+  train_annotation_file: "./temp_data/stage1/train/annotations.json" # <--- 修改: 临时训练集标注文件
+  val_image_dir: "./temp_data/stage1/val/images" # <--- 修改: 临时验证集图像目录
+  val_annotation_file: "./temp_data/stage1/val/annotations.json" # <--- 修改: 临时验证集标注文件
   # input_size: [640, 640] # YOLO 输入尺寸 (可能由 YOLO 模型内部处理)
 
 # Model Configuration
@@ -36,8 +37,8 @@ train:
   seed: 42
 
 # Logging and Saving
-log_dir: "logs/stage1_yolo"
-checkpoint_dir: "checkpoints/stage1_yolo"
+log_dir: "./temp_logs/stage1_yolo" # <--- 修改: 临时日志目录
+checkpoint_dir: "./temp_checkpoints/stage1_yolo" # <--- 修改: 临时检查点目录
 save_interval: 5 # 每隔多少 epoch 保存一次 checkpoint
 
 # Evaluation (在训练过程中进行)
