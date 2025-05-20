@@ -40,13 +40,23 @@ class SRQuality(nn.Module):
             nn.PixelShuffle(scale_factor)
         )
 
+        self.tail = nn.Conv2d(num_channels, in_channels, kernel_size=3, padding=1)
+
     def forward(self, x):
         x = self.head(x)
-        x = self.body(x) + x
+        # 遵循 EDSR 的典型残差结构，将 head 的输出作为 body 的残差输入
+        identity = x
+        x = self.body(x)
+        x = x + identity # 应用残差
         x = self.upsample(x)
+        x = self.tail(x)
         return x
 
 # 示例用法
 if __name__ == "__main__":
     model = SRQuality(scale_factor=4)
     print(model)
+    dummy_input = torch.randn(1, 3, 64, 64) # Batch, Channels, Height, Width
+    output = model(dummy_input)
+    print(f"Input shape: {dummy_input.shape}")
+    print(f"Output shape: {output.shape}") # 期望输出通道数为3

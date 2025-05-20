@@ -177,9 +177,10 @@ class ConditionalSR(nn.Module):
         mask_for_fusion_resized: Optional[torch.Tensor] = None
 
         if self.training:
-            gumbel_input_logits = torch.cat([mask_logits_coarse, torch.zeros_like(mask_logits_coarse)], dim=1)
-            mask_gumbel_output = gumbel_softmax(gumbel_input_logits, tau=temperature, hard=False, dim=1)
-            mask_soft_coarse = mask_gumbel_output[:, 0:1, :, :]
+            # ... (Gumbel-Softmax 逻辑不变) ...
+            gumbel_input_logits = torch.cat([mask_logits_coarse, torch.zeros_like(mask_logits_coarse)], dim=1) # [B, 2*C_out_masker, H_coarse, W_coarse]
+            mask_gumbel_output = gumbel_softmax(gumbel_input_logits, tau=temperature, hard=False, dim=1) # Apply Gumbel to the "channel" dim
+            mask_soft_coarse = mask_gumbel_output[:, 0:1, :, :] # Select the "chosen" part
             mask_coarse_out = mask_soft_coarse
             mask_to_upsample = mask_soft_coarse
         else:
@@ -189,7 +190,9 @@ class ConditionalSR(nn.Module):
                 mask_coarse_out = mask_hard_coarse
                 mask_to_upsample = mask_hard_coarse
             else:
-                mask_soft_coarse = mask_prob_coarse
+                # 在推理时，如果不是 hard_mask，通常也期望是概率图或者经过阈值处理的软掩码
+                # 为了与训练统一，这里可以是 mask_prob_coarse，由调用者决定如何使用
+                mask_soft_coarse = mask_prob_coarse # 使用概率值
                 mask_coarse_out = mask_soft_coarse
                 mask_to_upsample = mask_soft_coarse
         
@@ -199,38 +202,49 @@ class ConditionalSR(nn.Module):
         if mask_to_upsample is not None:
             target_size = sr_fast_output.shape[-2:]
             mask_for_fusion_resized = torch.nn.functional.interpolate( # 使用 F.interpolate
-                mask_to_upsample.float(),
+                mask_to_upsample.float(), #确保是 float
                 size=target_size,
-                mode='bilinear',
-                align_corners=False
+                mode='bilinear', # 'bilinear' 通常效果更好，如果掩码比较粗糙
+                align_corners=False # 通常设为 False
             )
+            # 确保掩码在 [0,1] 范围内，尤其是 hard_mask_inference=False 时 sigmoid 输出后直接用
+            mask_for_fusion_resized = torch.clamp(mask_for_fusion_resized, 0.0, 1.0)
+
             sr_image = mask_for_fusion_resized * sr_quality_output + (1 - mask_for_fusion_resized) * sr_fast_output
         else:
             logger.warning("mask_to_upsample is None. Defaulting SR image to sr_fast_output.")
-            sr_image = sr_fast_output
+            sr_image = sr_fast_output # Fallback
         
         # --- Detection ---
         yolo_raw_predictions: Optional[Any] = None
-        yolo_loss_value: Optional[Union[torch.Tensor, Dict]] = None
+        # detection_loss_from_wrapper 将会是 None (来自 DetectorWrapper 的新行为)
+        detection_loss_from_wrapper: Optional[torch.Tensor] = None 
 
-        if self.detector is not None: # self.detector.model 的检查在 DetectorWrapper 内部
+        if self.detector is not None:
             self.detector.train(self.training) # 设置 DetectorWrapper 的模式
 
             if self.training:
                 if targets is None:
                      logger.warning("ConditionalSR is in training mode, but no targets were provided for detection.")
-                # DetectorWrapper.forward 现在返回 (predictions, loss_value)
-                yolo_raw_predictions, yolo_loss_value = self.detector(sr_image, targets=targets)
+                
+                # DetectorWrapper.forward 现在返回 (raw_predictions, None)
+                yolo_raw_predictions, detection_loss_from_wrapper = self.detector(sr_image, targets=targets)
+                # `detection_loss_from_wrapper` 应该是 None, 我们不再依赖它来传递损失
+
             else: # 推理模式
                 # DetectorWrapper.forward 现在返回 (detections_list, None)
+                # detections_list 是处理好的检测结果列表
                 yolo_raw_predictions, _ = self.detector(sr_image, targets=None) 
         else:
             logger.info("Detector is not available. Skipping detection.")
 
+        # 返回给 calculate_joint_loss 的将是 yolo_raw_predictions
+        # 和原始的 targets (calculate_joint_loss 将需要自己格式化 targets)
+        # detection_loss_from_wrapper 现在是 None，所以 calculate_joint_loss 中的 precomputed_detection_loss 会是 None
         return {
             "sr_image": sr_image,
-            "mask_coarse": mask_coarse_out,
-            "mask_fused": mask_for_fusion_resized,
-            "detection_results": yolo_raw_predictions, # 在训练时是YOLO的原始预测，推理时是格式化的检测结果
-            "detection_loss": yolo_loss_value,       # 训练时是YOLO的损失(可能为None)，推理时为None
+            "mask_coarse": mask_coarse_out, # 这是 Masker 的直接输出 (B, 1, H_coarse, W_coarse)
+            "mask_fused": mask_for_fusion_resized, # 这是上采样后用于融合的掩码 (B, 1, H_sr, W_sr)
+            "yolo_raw_predictions": yolo_raw_predictions, # 在训练时是YOLO的原始预测，推理时是格式化的检测结果
+            "detection_loss_from_wrapper": detection_loss_from_wrapper, # 在训练时这里应该是 None
         }

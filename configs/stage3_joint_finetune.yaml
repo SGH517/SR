@@ -4,8 +4,8 @@
 dataset:
   name: COCO # 或 PASCAL_VOC 等
   # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
-  image_dir: "./temp_data/stage3/train" # <--- 修改: 临时训练集 LR 图像父目录
-  annotation_file: "./temp_data/stage3/train/annotations.json" # <--- 修改: 临时训练集调整后的标注文件
+  image_dir: "dataset/date_prepared" # <--- 修改: 临时训练集 LR 图像父目录
+  annotation_file: "dataset/date_prepared/annotations.json" # <--- 修改: 临时训练集调整后的标注文件
   scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
 
 # Model Configuration
@@ -35,12 +35,12 @@ model:
     sr_fast: "./temp_checkpoints/stage2_sr/sr_fast_pretrained.pth" # <--- 修改: 临时 SR_Fast 权重路径
     sr_quality: "./temp_checkpoints/stage2_sr/sr_quality_pretrained.pth" # <--- 修改: 临时 SR_Quality 权重路径
     masker: null # <--- 修改: 如果有预训练 Masker 权重，提供路径
-    detector: "./temp_checkpoints/stage1_yolo/yolo_pretrained_hr.pth" # <--- 修改: 临时 YOLO 权重路径
+    detector: "./temp_checkpoints/stage1_yolo/yolo_pretrained_hr.pt" # <--- 修改: 临时 YOLO 权重路径
 
 # Training Configuration
 train:
-  epochs: 30 # <--- 修改: 微调轮数
-  batch_size: 8 # <--- 修改: 批次大小
+  epochs: 150 # <--- 修改: 微调轮数
+  batch_size: 128 # <--- 修改: 批次大小
 
   # 差分学习率配置
   # utils/optimizer_utils.py 会根据以下规则自动分组参数：
@@ -96,5 +96,5 @@ evaluation:
   # interval: 1 # 每隔多少 epoch 评估一次 (已改为 step-based 在 stage3_finetune_joint.py 中控制)
   metric: "map" # 主要评估指标
   # 验证集使用与训练集相同的设置 (LR 图像)
-  val_image_dir: "./temp_data/stage3/val" # <--- 修改: 临时验证集 LR 图像父目录
-  val_annotation_file: "./temp_data/stage3/val/annotations.json" # <--- 修改: 临时验证集调整后标注
+  val_image_dir: "dataset/date_prepared" # <--- 修改: 临时验证集 LR 图像父目录
+  val_annotation_file: "dataset/date_prepared/annotations.json" # <--- 修改: 临时验证集调整后标注
