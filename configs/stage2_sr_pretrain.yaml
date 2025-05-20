@@ -4,9 +4,9 @@
 dataset:
   name: DIV2K # 或 Flickr2K 等
   # 假设已使用 prepare_sr_data.py 生成 LR/ 和 HR/ 目录
-  base_dir: "./temp_data/stage2/train" # <--- 修改: 临时训练集 LR/HR 父目录
+  base_dir: "dataset/date_prepared" # <--- 修改: 临时训练集 LR/HR 父目录
   scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
-  # patch_size: 64 # 训练时裁剪的 LR patch 大小 (可选)
+  patch_size: 128 # 训练时裁剪的 LR patch 大小 (可选)
 
 # Models Configuration (训练 SR_Fast 和 SR_Quality)
 models:
@@ -28,8 +28,8 @@ models:
 
 # Training Configuration (通用设置，可为 fast/quality 分别调整)
 train:
-  epochs: 100 # <--- 修改: 训练轮数
-  batch_size: 16 # <--- 修改: 批次大小
+  epochs: 300 # <--- 修改: 训练轮数
+  batch_size: 64 # <--- 修改: 批次大小
   optimizer:
     name: Adam
     args:
@@ -42,18 +42,17 @@ train:
       gamma: 0.5
   loss: L1 # 或 MSE
   device: "cpu" # 默认使用CPU训练，可通过命令行参数覆盖为"cuda"
-  num_workers: 4
+  num_workers: 0
   seed: 42
+  log_dir: "./temp_logs/stage2_sr" # <--- 修改: 临时日志目录
 
 # Logging and Saving
-log_dir: "./temp_logs/stage2_sr" # <--- 修改: 临时日志目录
 # Checkpoints 在 models 配置中指定了路径
-save_interval: 10 # 每隔多少 epoch 保存一次 checkpoint
 
 # Evaluation (在训练过程中进行)
-evaluation:
-  interval: 5 # 每隔多少 epoch 评估一次
-  metrics: ["psnr", "ssim"] # 评估指标
-  val_dataset: # <--- 修改: 验证数据集路径 (例如 Set5, Set14)
-    base_dir: "./temp_data/stage2/val" # <--- 修改: 临时验证集 LR/HR 父目录
-    sets: ["Set5", "Set14"] # 验证集子目录名称
+# evaluation:
+#   interval: 5 # 每隔多少 epoch 评估一次
+#   metrics: ["psnr", "ssim"] # 评估指标
+#   val_dataset: # <--- 修改: 验证数据集路径 (例如 Set5, Set14)
+#     base_dir: r"dataset\date_prepared" # <--- 修改: 临时验证集 LR/HR 父目录
+#     sets: ["LR", "HR"] # 验证集子目录名称
