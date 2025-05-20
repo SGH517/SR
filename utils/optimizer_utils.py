@@ -21,8 +21,8 @@ def get_optimizer_with_differential_lr(model, config):
     Returns:
         torch.optim.Optimizer: 配置好的优化器。
     """
-    lr_config = config['learning_rates']
-    opt_config = config['optimizer']
+    lr_config = config['train']['learning_rates']
+    opt_config = config['train']['optimizer']
 
     high_lr_params = []
     low_lr_params = []

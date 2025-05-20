@@ -1,11 +1,10 @@
-# filepath: d:\论文相关\SR\utils\evaluation_utils.py
 import os
 import json
 import torch
 from tqdm import tqdm
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Union
 import logging
 
 def run_coco_evaluation(

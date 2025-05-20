@@ -168,111 +168,69 @@ class ConditionalSR(nn.Module):
                 temperature: float = 1.0,
                 hard_mask_inference: bool = False
                 ) -> Dict[str, Optional[Any]]:
-        """
-        前向传播。
-
-        参数:
-            lr_image (torch.Tensor): 输入低分辨率图像 (B, C, H, W)。
-            targets (list, optional): 目标检测标注 (仅在训练时用于计算损失)。
-            temperature (float, optional): Gumbel-Softmax 温度。
-            hard_mask_inference(bool): 推理时是否使用硬掩码。
-
-        返回:
-            dict: 包含超分图像、粗糙掩码 (用于损失)、检测器原始输出。
-        """
-        # Ensure input is on the correct device
         lr_image = lr_image.to(self.device)
 
         # --- Mask Generation ---
-        # Masker now outputs coarse logits (B, 1, H_lr/P, W_lr/P)
         mask_logits_coarse = self.masker(lr_image)
-
-        # Determine mask threshold from config, with a default
         mask_threshold = self.config.get('model', {}).get('masker', {}).get('threshold', 0.5)
-
-        mask_coarse_out: Optional[torch.Tensor] = None # This will be the coarse mask for loss
-        mask_for_fusion_resized: Optional[torch.Tensor] = None # This will be the upsampled mask for fusion
+        mask_coarse_out: Optional[torch.Tensor] = None
+        mask_for_fusion_resized: Optional[torch.Tensor] = None
 
         if self.training:
-            # 训练时使用 Gumbel-Softmax 生成软掩码 (在粗粒度上应用)
-            # Create 2 channels for Gumbel: [Logit_Quality, Logit_Fast]
-            gumbel_input_logits = torch.cat([mask_logits_coarse, torch.zeros_like(mask_logits_coarse)], dim=1) # (B, 2, H_lr/P, W_lr/P)
-            mask_gumbel_output = gumbel_softmax(gumbel_input_logits, tau=temperature, hard=False, dim=1) # Apply Gumbel along channel dim
-            mask_soft_coarse = mask_gumbel_output[:, 0:1, :, :]  # Take the first channel (probability of Quality path) (B, 1, H_lr/P, W_lr/P)
-
-            mask_coarse_out = mask_soft_coarse # Use soft coarse mask for loss calculation during training
-            mask_to_upsample = mask_soft_coarse # Use soft coarse mask for upsampling
-
+            gumbel_input_logits = torch.cat([mask_logits_coarse, torch.zeros_like(mask_logits_coarse)], dim=1)
+            mask_gumbel_output = gumbel_softmax(gumbel_input_logits, tau=temperature, hard=False, dim=1)
+            mask_soft_coarse = mask_gumbel_output[:, 0:1, :, :]
+            mask_coarse_out = mask_soft_coarse
+            mask_to_upsample = mask_soft_coarse
         else:
-            # 推理时
-            mask_prob_coarse = torch.sigmoid(mask_logits_coarse) # Convert coarse logits to probabilities (0 to 1) (B, 1, H_lr/P, W_lr/P)
-
+            mask_prob_coarse = torch.sigmoid(mask_logits_coarse)
             if hard_mask_inference:
-                mask_hard_coarse = (mask_prob_coarse > mask_threshold).float() # Apply threshold for hard mask (B, 1, H_lr/P, W_lr/P)
-                mask_coarse_out = mask_hard_coarse # Output hard coarse mask if used
-                mask_to_upsample = mask_hard_coarse # Use hard coarse mask for upsampling
+                mask_hard_coarse = (mask_prob_coarse > mask_threshold).float()
+                mask_coarse_out = mask_hard_coarse
+                mask_to_upsample = mask_hard_coarse
             else:
-                mask_soft_coarse = mask_prob_coarse # Use probabilities as soft mask (B, 1, H_lr/P, W_lr/P)
-                mask_coarse_out = mask_soft_coarse # Output soft coarse mask
-                mask_to_upsample = mask_soft_coarse # Use soft coarse mask for upsampling
+                mask_soft_coarse = mask_prob_coarse
+                mask_coarse_out = mask_soft_coarse
+                mask_to_upsample = mask_soft_coarse
+        
+        sr_fast_output = self.sr_fast(lr_image)
+        sr_quality_output = self.sr_quality(lr_image)
 
-        # --- Super-Resolution ---
-        # Ensure sub-models are on the correct device (should be handled in __init__)
-        sr_fast_output = self.sr_fast(lr_image) # (B, C, H_sr, W_sr)
-        sr_quality_output = self.sr_quality(lr_image) # (B, C, H_sr, W_sr)
-
-        # --- Mask Upsampling & Fusion ---
         if mask_to_upsample is not None:
-            target_size = sr_fast_output.shape[-2:] # Get H, W from SR output (H_sr, W_sr)
-            # Ensure mask_to_upsample is float for interpolation
-            mask_for_fusion_resized = F.interpolate(
+            target_size = sr_fast_output.shape[-2:]
+            mask_for_fusion_resized = torch.nn.functional.interpolate( # 使用 F.interpolate
                 mask_to_upsample.float(),
                 size=target_size,
-                mode='bilinear', # Use bilinear for smoother mask
+                mode='bilinear',
                 align_corners=False
             )
             sr_image = mask_for_fusion_resized * sr_quality_output + (1 - mask_for_fusion_resized) * sr_fast_output
         else:
-            # Handle case where mask generation failed or wasn't performed
             logger.warning("mask_to_upsample is None. Defaulting SR image to sr_fast_output.")
-            # Choose a default behavior, e.g., use the fast SR output
             sr_image = sr_fast_output
-            # Or raise an error if mask is essential
-            # raise RuntimeError("Mask generation failed, cannot proceed with fusion.")
-
-
+        
         # --- Detection ---
-        detection_results: Optional[Union[List[Dict], Tuple]] = None
-        detection_loss: Optional[Union[torch.Tensor, Dict]] = None
+        yolo_raw_predictions: Optional[Any] = None
+        yolo_loss_value: Optional[Union[torch.Tensor, Dict]] = None
 
-        if self.detector is not None and self.detector.model is not None:
-            # Set detector mode based on ConditionalSR mode
-            self.detector.train(self.training)
+        if self.detector is not None: # self.detector.model 的检查在 DetectorWrapper 内部
+            self.detector.train(self.training) # 设置 DetectorWrapper 的模式
 
             if self.training:
                 if targets is None:
-                     logger.warning("ConditionalSR is in training mode, but no targets were provided for detection loss calculation.")
-                     # Proceed with detection inference if needed, but loss will be None
-                     # Note: YOLO's forward might still return something even without targets
-                     detection_results, detection_loss = self.detector(sr_image, targets=None) # Pass None targets
-                else:
-                     # Pass targets for loss calculation
-                     detection_results, detection_loss = self.detector(sr_image, targets=targets)
-            else:
-                # Inference mode for detector
-                detection_results = self.detector(sr_image, targets=None) # Pass None targets in eval
-
+                     logger.warning("ConditionalSR is in training mode, but no targets were provided for detection.")
+                # DetectorWrapper.forward 现在返回 (predictions, loss_value)
+                yolo_raw_predictions, yolo_loss_value = self.detector(sr_image, targets=targets)
+            else: # 推理模式
+                # DetectorWrapper.forward 现在返回 (detections_list, None)
+                yolo_raw_predictions, _ = self.detector(sr_image, targets=None) 
         else:
-            # If detector is not available, return None for detection results and loss
-            detection_results = None
-            detection_loss = None
-            # logger.info("Detector is not available. Skipping detection.") # Already printed in __init__
-
+            logger.info("Detector is not available. Skipping detection.")
 
         return {
             "sr_image": sr_image,
-            "mask_coarse": mask_coarse_out, # Coarse mask (soft/hard) for loss calculation
-            "mask_fused": mask_for_fusion_resized, # Resized mask used for fusion
-            "detection_results": detection_results, # Raw results from detector (preds in train, detections in eval)
-            "detection_loss": detection_loss, # Loss tensor/dict in train, None in eval
+            "mask_coarse": mask_coarse_out,
+            "mask_fused": mask_for_fusion_resized,
+            "detection_results": yolo_raw_predictions, # 在训练时是YOLO的原始预测，推理时是格式化的检测结果
+            "detection_loss": yolo_loss_value,       # 训练时是YOLO的损失(可能为None)，推理时为None
         }

@@ -152,11 +152,25 @@ def train_joint(config, logger, args):
 
     sr_fast_config = config['model']['sr_fast']
     sr_quality_config = config['model']['sr_quality']
-    masker_config = config['model']['masker']
+    masker_config_full = config['model']['masker'] 
+    
+    valid_masker_init_keys = [
+    'in_channels', 
+    'base_channels', 
+    'num_blocks', 
+    'output_channels', 
+    'output_patch_size'
+]
+    masker_init_args = {}
+    for key in valid_masker_init_keys:
+        if key in masker_config_full: # 确保配置中存在该键
+            masker_init_args[key] = masker_config_full[key]
+        else:
+            logger.warning(f"Masker init argument '{key}' not found in config, using default or model's default.")
 
     sr_fast_model = SRFast(**sr_fast_config)
     sr_quality_model = SRQuality(**sr_quality_config)
-    masker_model = Masker(**masker_config)
+    masker_model = Masker(**masker_init_args)
 
     conditional_sr = ConditionalSR(
         sr_fast=sr_fast_model,
@@ -359,7 +373,7 @@ def train_joint(config, logger, args):
 def main():
     args = parse_args()
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"Error: Configuration file not found at {args.config}")

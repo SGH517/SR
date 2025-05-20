@@ -80,9 +80,9 @@ def convert_yolo_to_coco(image_dir, label_dir, output_file):
 
 if __name__ == "__main__":
     # 示例用法
-    image_dir = "D:\\论文相关\\Data partitioning\\train\\images"  # 需要确认图像目录路径
-    label_dir = "D:\\论文相关\\Data partitioning\\train\\labels"
-    output_file = "D:\\论文相关\\Data partitioning\\train\\annotations.json"
+    image_dir = "dataset/Data_partitioning/train/images" # 需要确认图像目录路径
+    label_dir = "dataset/Data_partitioning/train/labels"
+    output_file = "dataset/Data_partitioning/train/annotations.json"
     
     convert_yolo_to_coco(image_dir, label_dir, output_file)
     print(f"转换完成，结果已保存到 {output_file}")
