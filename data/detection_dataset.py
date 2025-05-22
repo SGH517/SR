@@ -46,14 +46,9 @@ class DetectionDataset(Dataset):
         anns = coco.loadAnns(ann_ids)  # 此图像的标注列表
 
         img_info = coco.loadImgs(img_id)[0]
-        
-        # 图像路径构建:
-        # COCO 标注中的 file_name 可能形如 "LR/image_name.jpg" (由 prepare_detection_data.py 生成)
-        # 而 self.image_dir 已经是处理后的 LR 图像目录 (例如 "./temp_data/stage3/train/LR/")
-        # 因此，我们需要从 coco_file_name 中提取基本文件名。
         coco_file_name = img_info['file_name']
-        base_file_name = os.path.basename(coco_file_name)
-        path = os.path.join(self.image_dir, base_file_name)
+        path = os.path.join(self.image_dir, coco_file_name) 
+        path = os.path.normpath(path)
 
         try:
             img = Image.open(path).convert('RGB')
