@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 import math
 
+# 该模块提供了评估指标的计算函数，例如PSNR和SSIM。
+
 def calculate_psnr(sr, hr, max_pixel_value=1.0):
     """
     计算 PSNR (峰值信噪比)。

@@ -5,6 +5,7 @@ from models.sr_fast import SRFast
 from models.sr_quality import SRQuality
 from models.masker import Masker
 
+# 该脚本用于测试模型的初始化和前向传播。
 def parse_args():
     parser = argparse.ArgumentParser(description="Test model initialization and forward pass")
     parser.add_argument("--use_gpu", action="store_true", help="Use GPU for testing if available")

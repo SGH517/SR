@@ -19,7 +19,7 @@ class ResidualBlock(nn.Module):
 
 class SRQuality(nn.Module):
     """
-    高质量超分辨率网络，仿照 EDSR。
+    该模块实现了高质量超分辨率网络（SR_Quality）。
     """
     def __init__(self, scale_factor=4, in_channels=3, num_channels=64, num_blocks=16):
         super(SRQuality, self).__init__()

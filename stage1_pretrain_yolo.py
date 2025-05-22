@@ -7,6 +7,8 @@ from torch.utils.tensorboard import SummaryWriter
 import shutil  # Import shutil
 import torch  # Import torch for cuda check
 
+# 该脚本用于预训练YOLO检测器。
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Stage 1: Pretrain YOLO on High-Resolution Data")
     parser.add_argument("--config", type=str, required=True, help="Path to the configuration file (stage1_yolo_pretrain.yaml)")

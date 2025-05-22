@@ -4,6 +4,7 @@ from ultralytics import YOLO
 from typing import List, Dict, Union, Tuple, Optional, Any
 import os
 
+# 该模块封装了YOLO检测器，用于目标检测任务。
 class DetectorWrapper(torch.nn.Module):
     def __init__(self, model_path: str, device: str = 'cuda'):
         super(DetectorWrapper, self).__init__()

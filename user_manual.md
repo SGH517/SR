@@ -14,27 +14,21 @@
 │   ├── stage2_sr_pretrain.yaml     # 阶段2配置
 │   └── stage3_joint_finetune.yaml  # 阶段3配置
 ├── data/                      # 数据处理脚本
-│   ├── prepare_detection_data.py  # 检测数据准备
-│   └── prepare_sr_data.py        # 超分辨率数据准备
+│   ├── prepare_detection_data.py  # 准备检测数据
+│   └── prepare_sr_data.py        # 准备超分辨率数据
 ├── models/                    # 模型实现
 │   ├── conditional_sr.py      # 条件超分辨率主模型
 │   ├── detector.py            # YOLO检测器封装
 │   ├── masker.py              # 掩码生成器
 │   ├── sr_fast.py             # 快速超分辨率网络
-│   └── sr_quality.py         # 高质量超分辨率网络
-├── utils/                     # 实用工具
+│   ├── sr_quality.py          # 高质量超分辨率网络
+│   └── ...                    # 其他模型文件
+├── utils/                     # 工具函数
+│   ├── logger.py              # 日志工具
+│   ├── gumbel.py              # Gumbel采样工具
+│   ├── flops_counter.py       # FLOPs计算工具
 │   ├── evaluation_utils.py    # 评估工具
-│   ├── flops_counter.py       # 计算量统计
-│   ├── gumbel.py             # Gumbel-Softmax实现
-│   ├── logger.py              # 日志记录
-│   ├── losses.py              # 损失函数
-│   ├── metrics.py             # 评估指标
-│   └── optimizer_utils.py     # 优化器工具
-├── evaluate.py                # 评估脚本
-├── inference.py               # 推理脚本
-├── stage1_pretrain_yolo.py    # 阶段1训练
-├── stage2_pretrain_sr.py      # 阶段2训练
-└── stage3_finetune_joint.py   # 阶段3训练
+│   └── ...                    # 其他工具文件
 ```
 
 ## 3. 环境配置
@@ -114,3 +108,4 @@ train:
 使用TensorBoard查看训练过程:
 ```bash
 tensorboard --logdir logs/
+```

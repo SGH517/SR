@@ -29,3 +29,4 @@ def gumbel_softmax(logits: torch.Tensor, tau: float = 1.0, hard: bool = False, d
         return (y_hard - y_soft).detach() + y_soft
     else:
         return y_soft
+# 该模块实现了Gumbel采样相关的工具函数。

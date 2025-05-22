@@ -56,3 +56,5 @@ train:
 #   val_dataset: # <--- 修改: 验证数据集路径 (例如 Set5, Set14)
 #     base_dir: r"dataset\date_prepared" # <--- 修改: 临时验证集 LR/HR 父目录
 #     sets: ["LR", "HR"] # 验证集子目录名称
+
+# 配置文件，用于超分辨率网络预训练阶段，包括数据集、模型和训练参数。

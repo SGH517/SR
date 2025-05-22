@@ -1,6 +1,8 @@
 import logging
 import os
 
+# 该模块提供日志记录功能，包括设置日志记录器和日志级别的工具函数。
+
 def setup_logger(log_dir, log_file_name="log.txt", level=logging.INFO):
     """
     设置日志记录器，支持控制台和文件日志。

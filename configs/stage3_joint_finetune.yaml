@@ -1,9 +1,11 @@
+# 配置文件，用于联合微调阶段的训练，包括数据集、模型和训练参数。
+
 dataset:
   name: COCO # 或 PASCAL_VOC 等
   # 假设已使用 prepare_detection_data.py 生成 LR/ 和 annotations.json 的父目录
-  image_dir: "dataset/date_prepared" # <--- 修改: 临时训练集 LR 图像父目录
-  annotation_file: "dataset/date_prepared/annotations.json" # <--- 修改: 临时训练集调整后的标注文件
-  scale_factor: 4 # <--- 修改: 必须与 SR 模型匹配
+  image_dir: "dataset/date_prepared" 
+  annotation_file: "dataset/date_prepared/annotations.json" 
+  scale_factor: 4 # 必须与 SR 模型匹配
 
 # Model Configuration
 model:
@@ -34,23 +36,21 @@ model:
     masker: null # 如果有预训练 Masker 权重，提供路径
     detector: "./temp_checkpoints/stage1_yolo/yolo_pretrained_hr.pt" # YOLOv8 .pt 权重
 
-  # YOLO 模型特定参数 (新增或确认此结构)
-  # 这些参数将用于在 `compute_yolo_loss_from_predictions` 中正确初始化和配置损失计算逻辑
-  num_classes: 2 # <--- 新增: 数据集中的类别数量 (例如: block, bolt -> 2)
-                 # 这个值应该与您的数据集和YOLO预训练阶段一致
+  # YOLO 模型特定参数
+  num_classes: 2 # 数据集中的类别数量 (例如: block, bolt -> 2)
   yolo_params:
-    reg_max: 16   # <--- 新增: DFL回归的最大值，通常为16
-    strides: [8.0, 16.0, 32.0] # <--- 新增: YOLO检测头的三个输出层的步长
+    reg_max: 16   
+    strides: [8.0, 16.0, 32.0] 
 
 # Training Configuration
 train:
-  epochs: 2
-  batch_size: 2 # <--- 修改: **显著减小批次大小以避免OOM** (例如 2, 4, 8, 根据您的显存调整)
+  epochs: 100 # <--- 修改: 大幅增加训练轮数, 例如 100-150 轮，根据收敛情况调整
+  batch_size: 8 # <--- 修改: RTX 3090 可以尝试更大的批次大小, 例如 8, 16。如果OOM则减小。
 
-  # 差分学习率配置
+  # 差分学习率配置 (初始值可以保留，后续根据训练情况调整)
   learning_rates:
-    high_lr: 0.0001 # 用于 Masker, Detector Head, SR 上采样层等
-    low_lr: 0.000001 # 用于 Detector Backbone, SR 主体层等
+    high_lr: 0.0001 
+    low_lr: 0.000001 
 
   # 优化器
   optimizer:
@@ -62,60 +62,60 @@ train:
   scheduler:
     name: CosineAnnealingLR
     args:
-      T_max: 150 # <--- 修改: 应为总 epochs 数，如果 scheduler.step() 是每个 epoch 调用
-                 # 如果 scheduler.step() 是每个 step 调用, T_max 应为 total_steps = epochs * steps_per_epoch
+      # T_max 将在脚本中根据 epochs 和 dataloader 长度动态计算 (如果脚本支持)
+      # 如果脚本不支持动态计算，你需要手动设置 T_max = total_epochs * (num_train_images / batch_size)
+      # 假设 num_train_images = 1252, batch_size = 8, epochs = 100
+      # steps_per_epoch = 1252 / 8 = 157 (向上取整)
+      # T_max = 100 * 157 = 15700
+      T_max: 15700 # <--- 修改: 配合新的 epochs 和 batch_size (示例值)
       eta_min: 0.0000001
 
-  # 联合损失函数权重 (用于 calculate_joint_loss)
+  # 联合损失函数权重 (初始值可以保留，后续根据训练情况调整)
   loss_weights:
-    detection: 1.0 # YOLO 检测损失权重 (此权重乘以 compute_yolo_loss_from_predictions 的输出)
-    sparsity: 0.1  # 稀疏度损失权重
-    smoothness: 0.01 # 掩码平滑度损失权重
+    detection: 1.0 
+    sparsity: 0.05  # <--- 可选修改: 稍微降低稀疏度损失权重，让模型初期更关注检测本身
+    smoothness: 0.01 
 
-  # YOLO 特定损失的超参数 (新增，用于 compute_yolo_loss_from_predictions 内部)
+  # YOLO 特定损失的超参数
   yolo_hyp:
-    box: 7.5  # CIoU + DFL 边界框损失的增益
-    cls: 0.5  # 分类损失的增益
-    dfl: 1.5  # DFL 部分的增益
-    label_smoothing: 0.0 # 标签平滑系数 (通常为0)
+    box: 7.5  
+    cls: 0.5  
+    dfl: 1.5  
+    label_smoothing: 0.0 
 
-  # TaskAlignedAssigner 参数 (新增，用于 compute_yolo_loss_from_predictions 内部)
+  # TaskAlignedAssigner 参数
   yolo_assigner_params:
     topk: 10
-    alpha: 0.5 # 用于对齐度量中的分类得分指数
-    beta: 6.0  # 用于对齐度量中的IoU指数
-    use_ciou_for_tal_metric: False # 在TAL的对齐度量计算中使用CIoU (YOLOv8通常为False, RT-DETR为True)
+    alpha: 0.5 
+    beta: 6.0  
+    use_ciou_for_tal_metric: False 
 
-  # 稀疏度目标 (用于 L_sparsity = mse(mean(mask), target_sparsity_ratio))
-  target_sparsity_ratio: 0.2 # 目标 Quality 区域比例
+  # 稀疏度目标
+  target_sparsity_ratio: 0.2 
 
   # Gumbel-Softmax 温度
   gumbel:
     initial_tau: 2.0
     final_tau: 0.5
-    anneal_epochs: 50 # <--- 修改: 温度退火的 epoch 数。如果 anneal_steps 未设置或为null，则使用此值。
-                     # 例如，如果总共150个epoch，希望在1/3时完成退火，设为50。
-    anneal_steps: null # <--- 修改: 温度退火的总步数。如果设置为 null 或未提供，则会使用 anneal_epochs * steps_per_epoch。
-                       # 如果您希望精确控制步数，例如总步数是 N，希望在 N/2 步完成退火，则设为 N/2。
-                       # 鉴于之前的讨论，如果150个epoch，每个epoch 10 step，总共1500 step。
-                       # 如果想在1000步完成退火，这里就写1000。
-                       # 当前 anneal_steps: 15000 远大于 1500，会导致温度几乎不变。建议设为 null 或一个更小的值。
-    anneal_schedule: "cosine" # 退火策略 (linear, cosine)
+    # anneal_epochs 和 anneal_steps 的关系:
+    # 如果 anneal_steps 设置为 null 或无效值, 则 anneal_steps = anneal_epochs * steps_per_epoch
+    # 为了在新的总训练轮数内有效退火:
+    anneal_epochs: 80 # <--- 修改: 例如，在总轮数的 80% 完成退火
+    anneal_steps: null 
+    anneal_schedule: "cosine" 
 
-  device: "cpu" # 默认使用CPU训练，可通过命令行参数 --use_gpu 覆盖为 "cuda"
-  num_workers: 4 # 根据您的CPU核心数和IO调整
+  device: "cpu" # 会被命令行 --use_gpu 覆盖为 "cuda"
+  num_workers: 8 # <--- 修改: 根据你的CPU核心数调整, 例如 4, 8, 16。对于64GB内存，8-16个worker应该可以
   seed: 42
-  log_interval_steps: 10 # 每隔多少步记录一次训练日志到 TensorBoard
+  log_interval_steps: 50 # <--- 修改: 可以适当增加记录间隔，比如每50或100步
 
 # Logging and Saving
 log_dir: "./temp_logs/stage3_joint"
 checkpoint_dir: "./temp_checkpoints/stage3_joint"
-# save_interval (step-based) 和 eval_interval (step-based) 由命令行参数控制
+# save_interval 和 eval_interval 由命令行参数控制
 
-# Evaluation (在训练过程中进行)
+# Evaluation
 evaluation:
-  # interval (step-based) 由命令行参数控制
-  metric: "map" # 主要评估指标
-  # 验证集使用与训练集相同的设置 (LR 图像)
-  val_image_dir: "dataset/date_prepared" # <--- 修改: 临时验证集 LR 图像父目录
-  val_annotation_file: "dataset/date_prepared/annotations.json" # <--- 修改: 临时验证集调整后标注
+  metric: "map" 
+  val_image_dir: "dataset/date_prepared" 
+  val_annotation_file: "dataset/date_prepared/annotations.json"

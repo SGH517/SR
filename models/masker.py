@@ -62,3 +62,6 @@ if __name__ == "__main__":
     input_tensor_large = torch.randn(1, 3, 128, 128) # Larger LR input
     output_logits_large = model(input_tensor_large)
     print(f"Input shape: {input_tensor_large.shape}, Output logits shape: {output_logits_large.shape}") # Expected output: (1, 1, 8, 8)
+# 该模块实现了掩码生成器，用于动态选择SR路径。
+# 通过学习图像的不同区域的重要性，掩码生成器能够为每个上采样块提供自适应的处理策略。
+# 这种方法允许网络在保持计算效率的同时，专注于图像中最相关的部分。

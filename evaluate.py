@@ -19,6 +19,7 @@ from pycocotools.coco import COCO  # For eval
 from pycocotools.cocoeval import COCOeval  # For eval
 from torchvision import transforms  # For eval dataset transform
 
+# 该脚本用于评估联合网络的目标检测性能。
 
 def load_model_for_eval(args, device):
     print(f"Loading checkpoint from {args.checkpoint}...")

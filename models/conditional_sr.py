@@ -214,6 +214,8 @@ class ConditionalSR(nn.Module):
         else:
             logger.warning("mask_to_upsample is None. Defaulting SR image to sr_fast_output.")
             sr_image = sr_fast_output # Fallback
+            
+        sr_image = torch.clamp(sr_image, 0.0, 1.0)
         
         # --- Detection ---
         yolo_raw_predictions: Optional[Any] = None
@@ -248,3 +250,5 @@ class ConditionalSR(nn.Module):
             "yolo_raw_predictions": yolo_raw_predictions, # 在训练时是YOLO的原始预测，推理时是格式化的检测结果
             "detection_loss_from_wrapper": detection_loss_from_wrapper, # 在训练时这里应该是 None
         }
+
+# 该模块实现了条件超分辨率网络，结合了SR_Fast、SR_Quality和掩码生成器。

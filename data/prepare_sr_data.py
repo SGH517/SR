@@ -2,6 +2,8 @@ import os
 from PIL import Image
 import argparse
 
+# 该脚本用于准备超分辨率训练数据，包括生成低分辨率图像。
+
 def prepare_sr_data(input_dir, output_dir, scale_factor):
     """
     生成 LR-HR 图像对。

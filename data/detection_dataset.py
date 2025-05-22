@@ -6,6 +6,8 @@ from PIL import Image
 from pycocotools.coco import COCO # 请确保已安装: pip install pycocotools
 import torchvision.transforms.functional as F # For F.to_tensor
 
+# 该模块定义了目标检测数据集类，用于加载和处理检测任务的数据。
+
 class DetectionDataset(Dataset):
     def __init__(self, image_dir, annotation_file, transform=None, return_image_id=False):
         """

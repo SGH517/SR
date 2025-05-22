@@ -2,6 +2,7 @@ import os
 import json
 from PIL import Image
 
+# 该脚本用于将YOLO格式的标注转换为COCO格式。
 def convert_yolo_to_coco(image_dir, label_dir, output_file):
     """
     将YOLO格式标注转换为COCO格式的annotations.json

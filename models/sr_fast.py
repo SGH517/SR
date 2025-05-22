@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class SRFast(nn.Module):
     """
-    一个轻量级的超分辨率网络，模仿 FSRCNN。
+    该模块实现了快速超分辨率网络（SR_Fast）。
     """
     def __init__(self, scale_factor=4, in_channels=3, d=56, s=12, m=4):
         super(SRFast, self).__init__()

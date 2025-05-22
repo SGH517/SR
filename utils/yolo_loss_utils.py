@@ -29,54 +29,77 @@ def xywh2xyxy(x):
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
     """
-    Calculate Intersection over Union (IoU) of box1(1, 4) to box2(n, 4).
+    Calculate Intersection over Union (IoU) of box1 (N, 4) to box2 (M, 4).
     Args:
-        box1 (torch.Tensor): A tensor of shape (N, 4) or (B, N, 4).
-        box2 (torch.Tensor): A tensor of shape (M, 4) or (B, M, 4).
+        box1 (torch.Tensor): A tensor of shape (N, 4).
+        box2 (torch.Tensor): A tensor of shape (M, 4).
         xywh (bool, optional): If True, input boxes are in (x, y, w, h) format. Default is True.
         GIoU (bool, optional): If True, calculate Generalized IoU. Default is False.
         DIoU (bool, optional): If True, calculate Distance IoU. Default is False.
         CIoU (bool, optional): If True, calculate Complete IoU. Default is False.
         eps (float, optional): A small value to avoid division by zero. Default is 1e-7.
     Returns:
-        (torch.Tensor): IoU values.
+        (torch.Tensor): IoU values, shape (N, M).
     """
     # Get the coordinates of bounding boxes
     if xywh:  # transform from xywh to xyxy
-        (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
+        (x1_b1, y1_b1, w1, h1), (x1_b2, y1_b2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
         w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
-        b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
-        b2_x1, b2_x2, b2_y1, b2_y2 = x2 - w2_, x2 + w2_, y2 - h2_, y2 + h2_
-    else:  # x1, y1, x2, y2 = box1
+        b1_x1, b1_x2, b1_y1, b1_y2 = x1_b1 - w1_, x1_b1 + w1_, y1_b1 - h1_, y1_b1 + h1_
+        b2_x1, b2_x2, b2_y1, b2_y2 = x1_b2 - w2_, x1_b2 + w2_, y1_b2 - h2_, y1_b2 + h2_
+    else:  # x1, y1, x2, y2 format
         b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
         b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
         w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1
         w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1
 
     # Intersection area
-    inter = (torch.min(b1_x2, b2_x2) - torch.max(b1_x1, b2_x1)).clamp(0) * \
-            (torch.min(b1_y2, b2_y2) - torch.max(b1_y1, b2_y1)).clamp(0)
+    # b1_x1 is (N,1), b2_x1.T is (1,M) -> result is (N,M)
+    inter_x1 = torch.max(b1_x1, b2_x1.transpose(-1, -2))
+    inter_y1 = torch.max(b1_y1, b2_y1.transpose(-1, -2))
+    inter_x2 = torch.min(b1_x2, b2_x2.transpose(-1, -2))
+    inter_y2 = torch.min(b1_y2, b2_y2.transpose(-1, -2))
+    
+    inter_w = (inter_x2 - inter_x1).clamp(0)
+    inter_h = (inter_y2 - inter_y1).clamp(0)
+    inter = inter_w * inter_h # Shape (N, M)
 
     # Union Area
-    union = w1 * h1 + w2 * h2 - inter + eps
+    area1 = w1 * h1 # Shape (N, 1)
+    area2 = w2 * h2 # Shape (M, 1)
+    union = area1 + area2.transpose(-1, -2) - inter + eps # Shape (N, M)
 
     # IoU
-    iou = inter / union
-    if CIoU or DIoU or GIoU: # TODO: check why GIoU is not working with List[Tensor] type
+    iou = inter / union # Shape (N, M)
+
+    if CIoU or DIoU or GIoU:
         # Minimum enclosing box
-        cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width
-        ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height
-        if CIoU or DIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
-            c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
-            rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
-            if CIoU:  # Complete IoU
-                v = (4 / math.pi ** 2) * torch.pow(torch.atan(w2 / (h2 + eps)) - torch.atan(w1 / (h1 + eps)), 2)
+        cw = torch.max(b1_x2, b2_x2.transpose(-1, -2)) - torch.min(b1_x1, b2_x1.transpose(-1, -2))  # convex width (N,M)
+        ch = torch.max(b1_y2, b2_y2.transpose(-1, -2)) - torch.min(b1_y1, b2_y1.transpose(-1, -2))  # convex height (N,M)
+        if CIoU or DIoU:
+            c2 = cw**2 + ch**2 + eps  # convex diagonal squared (N,M)
+            
+            # Center distance squared
+            # b1_center_x = (b1_x1 + b1_x2) / 2 (N,1)
+            # b2_center_x = (b2_x1 + b2_x2) / 2 (M,1)
+            # rho2_term_x = (b2_x1 + b2_x2).T - (b1_x1 + b1_x2) -> (1,M) - (N,1) -> (N,M)
+            rho2_term_x = (b2_x1 + b2_x2).transpose(-1, -2) - (b1_x1 + b1_x2)
+            rho2_term_y = (b2_y1 + b2_y2).transpose(-1, -2) - (b1_y1 + b1_y2)
+            rho2 = (rho2_term_x**2 + rho2_term_y**2) / 4 # (N,M)
+            
+            if CIoU:
+                # w1, h1 are (N,1); w2, h2 are (M,1)
+                atan_w1_h1 = torch.atan(w1 / (h1 + eps)) # (N,1)
+                atan_w2_h2_T = torch.atan(w2.transpose(-1, -2) / (h2.transpose(-1, -2) + eps)) # (1,M)
+                v = (4 / math.pi**2) * torch.pow(atan_w1_h1 - atan_w2_h2_T, 2) # (N,M)
                 with torch.no_grad():
-                    alpha = v / (v - iou + (1 + eps))
+                    alpha = v / (v - iou + (1 + eps)) # (N,M)
                 return iou - (rho2 / c2 + v * alpha)  # CIoU
             return iou - rho2 / c2  # DIoU
-        c_area = cw * ch + eps  # convex area
-        return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
+        
+        c_area = cw * ch + eps  # convex area (N,M)
+        return iou - (c_area - union) / c_area  # GIoU
+        
     return iou  # IoU
 
 
@@ -303,10 +326,38 @@ class TaskAlignedAssigner(nn.Module):
         assigned_align_metric = torch.zeros_like(fg_mask, dtype=torch.float) # [B, A]
         assigned_overlaps = torch.zeros_like(fg_mask, dtype=torch.float) # [B, A]
 
-        if fg_mask.any():
-            # Get actual metrics for the GT that each positive anchor was assigned to
-            assigned_align_metric[fg_mask] = align_metric[batch_idx_gather[fg_mask], target_gt_idx[fg_mask], fg_mask.nonzero(as_tuple=True)[1]]
-            assigned_overlaps[fg_mask] = overlaps[batch_idx_gather[fg_mask], target_gt_idx[fg_mask], fg_mask.nonzero(as_tuple=True)[1]]
+        # Convert fg_mask (counts) to a boolean mask.
+        # fg_mask_bool will be True for anchors assigned to at least one GT.
+        # Example: tensor([[False, True, True], [True, False, False]])
+        fg_mask_bool = fg_mask > 0
+
+        if fg_mask_bool.any():
+            # Get the batch and anchor indices where fg_mask_bool is True.
+            # positive_batches and positive_anchors will be 1D tensors listing the coordinates.
+            # Example: if fg_mask_bool is tensor([[False, True], [True, False]])
+            # positive_batches might be tensor([0, 1])
+            # positive_anchors might be tensor([1, 0])
+            positive_batches, positive_anchors = fg_mask_bool.nonzero(as_tuple=True)
+
+            # target_gt_idx is [B, A]. We need the gt_idx for the positive anchors.
+            # target_gt_idx[positive_batches, positive_anchors] will give a 1D tensor [N_fg]
+            # containing the gt_idx for each of the N_fg positive anchors.
+            gt_indices_for_align = target_gt_idx[positive_batches, positive_anchors]
+
+            # align_metric is [B, max_num_obj, A]
+            # overlaps is [B, max_num_obj, A]
+            # We need to select from align_metric using:
+            # - the batch index of the positive anchor (from positive_batches)
+            # - the gt index assigned to that positive anchor (from gt_indices_for_align)
+            # - the anchor index of the positive anchor (from positive_anchors)
+            # This will result in a 1D tensor of [N_fg] values.
+            align_values = align_metric[positive_batches, gt_indices_for_align, positive_anchors]
+            overlap_values = overlaps[positive_batches, gt_indices_for_align, positive_anchors]
+
+            # Assign these extracted values to the correct positions in
+            # assigned_align_metric and assigned_overlaps using the boolean mask or the N_fg indices.
+            assigned_align_metric[fg_mask_bool] = align_values
+            assigned_overlaps[fg_mask_bool] = overlap_values
 
         # Normalize the scores of positive predictions
         # norm_align_metric_per_anchor should be [B, A, 1]
@@ -463,7 +514,7 @@ class TaskAlignedAssigner(nn.Module):
             gt_labels (Tensor): Padded GT labels (bs, max_num_obj, 1).
             gt_bboxes (Tensor): Padded GT bboxes (bs, max_num_obj, 4) (xyxy image scale).
             target_gt_idx (Tensor): Index of assigned GT for each anchor (bs, n_anchors).
-            fg_mask (Tensor): Foreground mask for anchors (bs, n_anchors). 
+            fg_mask (Tensor): Foreground mask for anchors (bs, n_anchors).
                               This fg_mask contains counts from select_highest_overlaps.
         Returns:
             target_labels_assigned (Tensor): (bs, n_anchors)
@@ -473,11 +524,11 @@ class TaskAlignedAssigner(nn.Module):
         batch_ind = torch.arange(self.bs, dtype=torch.long, device=gt_labels.device).unsqueeze(1) # (bs, 1)
         
         target_labels_assigned = gt_labels[batch_ind, target_gt_idx.long()].squeeze(-1) # (bs, n_anchors)
-        
+
         # ---- 修改开始 ----
         # Condition for background anchors should be where fg_mask (count of assigned GTs) is 0
         background_mask = (fg_mask == 0)
-        
+
         target_labels_assigned[background_mask] = self.bg_idx # Set background anchors to bg_idx
         # ---- 修改结束 ----
 

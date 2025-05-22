@@ -1,3 +1,5 @@
+# 配置文件，用于YOLO检测器预训练阶段，包括数据集、模型和训练参数。
+
 # --- Stage 1: YOLO Pretraining on High-Resolution Data ---
 
 # Dataset Configuration
